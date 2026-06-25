@@ -1,0 +1,7 @@
+# Wird in der Cloud (GitHub Actions) erzeugt – nicht einchecken
+node_modules/
+ios/
+build/
+Payload/
+*.ipa
+.DS_Store

@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Pokémon-Go-Tradeliste</title>
+
+<!-- Handy / "Zum Startbildschirm hinzufügen" (PWA-tauglich, alles inline = eine Datei) -->
+<meta name="theme-color" content="#0f172a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tradeliste">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='47' fill='%23f8fafc' stroke='%230f172a' stroke-width='5'/><path d='M3 50a47 47 0 0 0 94 0z' fill='%23ef4444'/><rect x='3' y='45.5' width='94' height='9' fill='%230f172a'/><circle cx='50' cy='50' r='12' fill='%23f8fafc' stroke='%230f172a' stroke-width='5'/></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230f172a'/><circle cx='50' cy='50' r='34' fill='%23f8fafc' stroke='%230f172a' stroke-width='4'/><path d='M16 50a34 34 0 0 0 68 0z' fill='%23ef4444'/><rect x='16' y='46' width='68' height='8' fill='%230f172a'/><circle cx='50' cy='50' r='9' fill='%23f8fafc' stroke='%230f172a' stroke-width='4'/></svg>">
+<style>
+  /* ============================================================
+     Design-Grundlagen / Variablen
+  ============================================================ */
+  :root {
+    --bg: #0f172a;
+    --bg-card: #1e293b;
+    --bg-row: #273449;
+    --bg-input: #0f172a;
+    --border: #334155;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --accent: #ef4444;        /* Pokéball-Rot */
+    --accent-hover: #dc2626;
+    --blue: #3b82f6;
+    --blue-bg: #102844;
+    --green: #22c55e;
+    --green-bg: #14321f;
+    --green-border: #2f6b43;
+    --yellow: #fbbf24;
+    --danger: #f87171;
+    --radius: 12px;
+    --shadow: 0 4px 14px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding: 16px;
+  }
+
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header.app-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  header.app-header .ball {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: linear-gradient(var(--accent) 0 50%, #f8fafc 50% 100%);
+    border: 3px solid #0f172a;
+    box-shadow: inset 0 0 0 2px #0f172a, var(--shadow);
+    position: relative; flex: none;
+  }
+  header.app-header .ball::after {
+    content: ""; position: absolute; inset: 0; margin: auto;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #f8fafc; border: 2px solid #0f172a;
+  }
+  h1 { font-size: 1.45rem; margin: 0; }
+  .subtitle { color: var(--text-muted); font-size: .9rem; margin: 0 0 16px; }
+
+  /* ============================================================
+     Tab-Navigation (Liste / Terminübersicht)
+  ============================================================ */
+  .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .tab {
+    background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted);
+    padding: 9px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font: inherit;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .hidden { display: none !important; }
+
+  /* ============================================================
+     Tageslimit-Übersicht
+  ============================================================ */
+  .limit-info {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 18px;
+    font-size: .88rem;
+    color: var(--text-muted);
+  }
+  .limit-info strong { color: var(--text); }
+
+  /* ============================================================
+     Buttons
+  ============================================================ */
+  button {
+    font: inherit; cursor: pointer; border: none; border-radius: 8px;
+    padding: 9px 14px; font-weight: 600; transition: background .15s, opacity .15s, border-color .15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-secondary { background: var(--blue); color: #fff; }
+  .btn-secondary:hover { opacity: .88; }
+  .btn-ghost {
+    background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border); padding: 6px 10px;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--text-muted); }
+  .btn-icon {
+    background: transparent; color: var(--danger);
+    border: 1px solid transparent; padding: 6px 9px; font-size: .85rem;
+  }
+  .btn-icon:hover { background: rgba(248,113,113,.12); }
+
+  /* ============================================================
+     Neue Person anlegen (Formular)
+  ============================================================ */
+  .new-person {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 22px;
+    box-shadow: var(--shadow);
+  }
+  .new-person h2 { margin: 0 0 12px; font-size: 1.05rem; }
+  .new-person .grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;
+  }
+  .new-person .grid-trade {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;
+  }
+
+  label.field { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: var(--text-muted); }
+
+  input[type="text"] {
+    font: inherit; background: var(--bg-input); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; width: 100%;
+  }
+  input[type="text"]:focus { outline: none; border-color: var(--blue); }
+  input::placeholder { color: #64748b; }
+
+  /* ============================================================
+     Personen-Karten
+  ============================================================ */
+  .person {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 18px;
+    box-shadow: var(--shadow);
+  }
+  .person-head {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
+  }
+  .person-names { display: flex; flex-wrap: wrap; gap: 6px 16px; flex: 1; min-width: 200px; }
+  .person-name-item { font-size: .9rem; }
+  .person-name-item .lbl { color: var(--text-muted); font-size: .72rem; display: block; }
+  .person-name-item .val { font-weight: 700; }
+  .person-head .reddit .val::before { content: "u/"; color: var(--text-muted); font-weight: 400; }
+  .person-head-actions { display: flex; gap: 8px; }
+
+  /* Trade-Zeilen */
+  .trades { display: flex; flex-direction: column; gap: 10px; }
+  .trade {
+    background: var(--bg-row);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+  }
+  .trade.fixed {
+    border-left-color: var(--green);
+    background: linear-gradient(var(--green-bg), var(--bg-row) 60%);
+  }
+  .trade-main {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 8px; align-items: end;
+  }
+  .arrow { color: var(--text-muted); font-size: 1.3rem; padding-bottom: 8px; text-align: center; }
+
+  .trade-controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+    margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border);
+  }
+  .toggle { display: flex; align-items: center; gap: 8px; font-size: .85rem; user-select: none; cursor: pointer; }
+  .toggle input { width: 18px; height: 18px; accent-color: var(--green); cursor: pointer; }
+  .trade-controls .spacer { flex: 1; }
+
+  /* Datums-Button (öffnet Mini-Kalender) */
+  .date-btn {
+    background: var(--bg-input); border: 1px solid var(--border); color: var(--text);
+    padding: 7px 12px; font-size: .85rem; font-weight: 600; border-radius: 8px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .date-btn:hover { border-color: var(--blue); }
+  .date-btn.has-date { border-color: var(--blue); color: var(--text); }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+  }
+  .badge-fixed { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .badge-warn  { background: #3a2e08; color: var(--yellow); border: 1px solid #6b5618; }
+  .badge-plan  { background: var(--blue-bg); color: #7dd3fc; border: 1px solid #1e3a5f; }
+
+  .add-trade-row { margin-top: 14px; }
+
+  .empty {
+    text-align: center; color: var(--text-muted); padding: 40px 16px;
+    border: 1px dashed var(--border); border-radius: var(--radius);
+  }
+
+  /* ============================================================
+     Kalender (gemeinsam: Mini-Picker + Monatsübersicht)
+  ============================================================ */
+  .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .cal-title { font-weight: 700; font-size: 1.05rem; text-transform: capitalize; text-align: center; flex: 1; }
+  .cal-navbtn { padding: 6px 12px; font-size: 1.05rem; line-height: 1; }
+  .cal-dow { text-align: center; font-size: .7rem; color: var(--text-muted); padding: 2px 0; font-weight: 600; }
+
+  /* Mini-Picker-Raster
+     overflow:hidden umgeht einen Grid-Quirk: aspect-ratio-Zellen blähen sonst
+     die scrollWidth auf und erzeugen auf schmalen Screens horizontales Scrollen. */
+  .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; overflow: hidden; }
+  .day {
+    aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; font-size: .85rem; cursor: pointer; position: relative;
+    background: var(--bg-row); border: 1px solid transparent; user-select: none;
+  }
+  .day:hover { border-color: var(--blue); }
+  .day.empty { background: transparent; cursor: default; }
+  .day.empty:hover { border-color: transparent; }
+  /* ausgebucht: klar grau + deaktiviert, deutlich anders als frei und als "fest" */
+  .day.full {
+    background: #161f30; color: #46556e; cursor: not-allowed;
+    text-decoration: line-through; border-color: #232f45;
+  }
+  .day.full:hover { border-color: #232f45; }
+  .day.selected { background: var(--blue); color: #fff; font-weight: 700; }
+  .day.today { outline: 2px solid var(--yellow); outline-offset: -2px; }
+  .day .dot {
+    position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
+    width: 5px; height: 5px; border-radius: 50%; background: var(--green);
+  }
+
+  .cal-legend {
+    display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+    margin: 12px 0 2px; font-size: .7rem; color: var(--text-muted);
+  }
+  .cal-legend .lg { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: middle; margin-right: 4px; }
+  .lg-free { background: var(--bg-row); border: 1px solid var(--border); }
+  .lg-full { background: #161f30; border: 1px solid #232f45; }
+  .lg-dot  { background: var(--green); border-radius: 50%; }
+
+  .picker-foot, .detail-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; }
+
+  /* ============================================================
+     Overlay (Mini-Kalender-Popup + Tagesdetails)
+  ============================================================ */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(2,6,23,.65);
+    display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 100;
+  }
+  .overlay-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; width: 100%; max-width: 360px; box-shadow: var(--shadow);
+    max-height: 90vh; overflow: auto;
+  }
+
+  /* ============================================================
+     Monatsübersicht (Terminübersicht)
+  ============================================================ */
+  .cal-panel {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; box-shadow: var(--shadow);
+  }
+  .ov-dows { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; }
+  .ov-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .ov-cell {
+    min-height: 86px; background: var(--bg-row); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 3px; overflow: hidden;
+  }
+  .ov-cell.other { background: transparent; border-color: transparent; }
+  .ov-cell.has { background: var(--green-bg); border-color: var(--green-border); cursor: pointer; }
+  .ov-cell.has:hover { border-color: var(--green); }
+  .ov-day { font-weight: 700; font-size: .78rem; color: var(--text-muted); }
+  .ov-cell.has .ov-day { color: var(--green); }
+  .ov-cell.today { outline: 2px solid var(--yellow); outline-offset: -2px; }
+  .ov-cell.today .ov-day { color: var(--yellow); }
+  .ov-trade {
+    background: rgba(34,197,94,.16); color: #d7ffe4; border-radius: 4px;
+    padding: 2px 5px; font-size: .68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cal-hint { color: var(--text-muted); font-size: .8rem; margin: 14px 2px 0; text-align: center; }
+
+  /* Tagesdetails-Popup */
+  .detail-sub { color: var(--text-muted); font-size: .82rem; margin-bottom: 10px; }
+  .detail-trade { background: var(--bg-row); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .detail-line { font-weight: 700; margin-bottom: 3px; }
+  .detail-meta { font-size: .8rem; color: var(--text-muted); }
+
+  /* ============================================================
+     Toast
+  ============================================================ */
+  #toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(160%);
+    background: #7f1d1d; color: #fff; border: 1px solid var(--accent);
+    padding: 12px 18px; border-radius: 10px; box-shadow: var(--shadow);
+    max-width: 90%; font-size: .9rem; z-index: 200; transition: transform .3s ease;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.ok { background: #14532d; border-color: var(--green); }
+
+  /* ============================================================
+     Mobile
+  ============================================================ */
+  @media (max-width: 560px) {
+    .new-person .grid, .new-person .grid-trade { grid-template-columns: 1fr; }
+    .trade-main { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); padding: 0; }
+    .ov-grid, .ov-dows { gap: 4px; }
+    .ov-cell { min-height: 64px; padding: 4px; }
+    .ov-trade { font-size: .6rem; padding: 1px 3px; }
+    .ov-day { font-size: .72rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="app-header">
+    <div class="ball"></div>
+    <h1>Pokémon-Go-Tradeliste</h1>
+  </header>
+  <p class="subtitle">Persönliche Verwaltung deiner Trade-Vereinbarungen.</p>
+
+  <!-- Tab-Navigation -->
+  <nav class="tabs">
+    <button class="tab" data-view="list">📋 Liste</button>
+    <button class="tab" data-view="calendar">📅 Terminübersicht</button>
+  </nav>
+
+  <!-- ============ ANSICHT 1: LISTE ============ -->
+  <div id="view-list">
+    <div class="limit-info">
+      <strong>Tageslimit:</strong> Pro Kalendertag darf maximal <strong>1</strong> fester Trade liegen –
+      an einem <strong>Freitag</strong> sind <strong>2</strong> erlaubt (gilt über <em>alle</em> Personen hinweg).
+      Ein Datum lässt sich jederzeit vorab planen; bereits ausgebuchte Tage sind im Kalender ausgegraut.
+    </div>
+
+    <section class="new-person">
+      <h2>➕ Neue Person + ersten Trade anlegen</h2>
+      <div class="grid">
+        <label class="field">Reddit-Benutzername
+          <input type="text" id="np-reddit" placeholder="z. B. ash_ketchum">
+        </label>
+        <label class="field">Ingame-Name
+          <input type="text" id="np-ingame" placeholder="z. B. AshK1996">
+        </label>
+      </div>
+      <div class="grid-trade">
+        <label class="field">Pokémon abgeben
+          <input type="text" id="np-give" placeholder="z. B. Glurak">
+        </label>
+        <label class="field">Pokémon erhalten
+          <input type="text" id="np-receive" placeholder="z. B. Bisaflor">
+        </label>
+      </div>
+      <button class="btn-primary" id="np-add">Person anlegen</button>
+    </section>
+
+    <div id="people"></div>
+  </div>
+
+  <!-- ============ ANSICHT 2: TERMINÜBERSICHT ============ -->
+  <div id="view-calendar" class="hidden">
+    <div class="cal-panel" id="calendar-host"></div>
+  </div>
+
+</div>
+
+<!-- Overlay für Mini-Kalender & Tagesdetails -->
+<div id="overlay" class="overlay hidden">
+  <div id="overlay-card" class="overlay-card"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   1) DATENMODELL / DATENSTRUKTUR  (unverändert beibehalten)
+   ------------------------------------------------------------
+   state.people = [
+     {
+       id, reddit, ingame,
+       trades: [
+         {
+           id,
+           give,      // Pokémon, das abgegeben wird (Freitext)
+           receive,   // Pokémon, das erhalten wird (Freitext)
+           fixed,     // boolean – "Trade steht fest"
+           date       // 'YYYY-MM-DD' – frei planbar, unabhängig vom Status
+         }
+       ]
+     }
+   ]
+============================================================ */
+
+const STORAGE_KEY = 'pogo-tradeliste-v1';
+let state = { people: [] };
+let currentView = 'list';   // 'list' | 'calendar'  (nicht persistiert)
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) state = JSON.parse(raw);
+  } catch (e) {
+    console.warn('Konnte gespeicherte Daten nicht laden:', e);
+  }
+  if (!state || !Array.isArray(state.people)) state = { people: [] };
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+/* ============================================================
+   VALIDIERUNGSLOGIK – Tageslimit-Regel (UNVERÄNDERT)
+   - Pro Kalendertag max. 1 fester Trade.
+   - Ausnahme Freitag: max. 2 feste Trades.
+============================================================ */
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+// Parsen ohne Zeitzonen-Verschiebung (YYYY-MM-DD -> lokales Datum)
+function parseDate(str) {
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function isFriday(dateStr) {
+  return parseDate(dateStr).getDay() === 5; // 0=So ... 5=Fr
+}
+
+function limitForDate(dateStr) {
+  return isFriday(dateStr) ? 2 : 1;
+}
+
+// Zählt feste Trades an einem Datum – optional einen Trade ausschließen (der gerade bearbeitete)
+function countFixedOnDate(dateStr, excludeTradeId) {
+  let count = 0;
+  for (const p of state.people) {
+    for (const t of p.trades) {
+      if (t.id === excludeTradeId) continue;
+      if (t.fixed && t.date === dateStr) count++;
+    }
+  }
+  return count;
+}
+
+// Liefert alle festen Trades an einem Datum (für die Übersicht/Details)
+function fixedTradesOnDate(dateStr) {
+  const res = [];
+  for (const p of state.people) {
+    for (const t of p.trades) {
+      if (t.fixed && t.date === dateStr) res.push({ person: p, trade: t });
+    }
+  }
+  return res;
+}
+
+// Ist der Tag für DIESEN Trade ausgebucht? (eigener Trade zählt nicht mit)
+function isDayFull(dateStr, excludeTradeId) {
+  return countFixedOnDate(dateStr, excludeTradeId) >= limitForDate(dateStr);
+}
+
+// Prüft, ob ein Trade an gegebenem Datum FEST gesetzt werden darf.
+function canFix(dateStr, excludeTradeId) {
+  if (!dateStr) {
+    return { ok: false, message: 'Bitte zuerst ein Datum für den festen Trade wählen.' };
+  }
+  const limit = limitForDate(dateStr);
+  const already = countFixedOnDate(dateStr, excludeTradeId);
+  if (already >= limit) {
+    const tag = isFriday(dateStr) ? 'Freitag' : 'Tag';
+    return {
+      ok: false,
+      message: `Limit erreicht: Am ${formatDate(dateStr)} (${tag}) sind bereits ${already} von ${limit} festen Trades vergeben.`
+    };
+  }
+  return { ok: true };
+}
+
+function formatDate(str) {
+  if (!str) return '';
+  return parseDate(str).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/* ============================================================
+   FUNKTIONEN: Hinzufügen / Bearbeiten / Löschen
+============================================================ */
+
+function findPerson(personId) { return state.people.find(p => p.id === personId); }
+function findTrade(personId, tradeId) {
+  const p = findPerson(personId);
+  return p ? p.trades.find(t => t.id === tradeId) : null;
+}
+
+function newTrade() { return { id: uid(), give: '', receive: '', fixed: false, date: '' }; }
+
+function addPerson(reddit, ingame, give, receive) {
+  state.people.push({
+    id: uid(),
+    reddit: reddit.trim(),
+    ingame: ingame.trim(),
+    trades: [ { ...newTrade(), give: give.trim(), receive: receive.trim() } ]
+  });
+  save(); render();
+}
+
+function addTradeToPerson(personId) {
+  const p = findPerson(personId);
+  if (!p) return;
+  p.trades.push(newTrade());
+  save(); render();
+}
+
+function updateTradeText(personId, tradeId, field, value) {
+  const t = findTrade(personId, tradeId);
+  if (!t) return;
+  t[field] = value;
+  save();
+}
+
+/* Status "fest" umschalten – Tageslimit-Prüfung greift hier FINAL.
+   Aktivieren ohne Datum ist erlaubt (Warnhinweis "Datum noch wählen"). */
+function setTradeFixed(personId, tradeId, fixed) {
+  const t = findTrade(personId, tradeId);
+  if (!t) return true;
+
+  if (fixed && t.date) {
+    const check = canFix(t.date, tradeId);
+    if (!check.ok) {
+      toast(check.message, false);
+      render(); // Checkbox zurücksetzen
+      return false;
+    }
+  }
+  t.fixed = fixed;
+  save(); render();
+  return true;
+}
+
+/* Datum setzen – jetzt UNABHÄNGIG vom Status "fest" jederzeit planbar.
+   Ausgebuchte Tage sind im Mini-Kalender ohnehin nicht wählbar; hier
+   zusätzlich als Sicherheitsnetz geprüft. */
+function setTradeDate(personId, tradeId, dateStr) {
+  const t = findTrade(personId, tradeId);
+  if (!t) return;
+
+  if (dateStr && isDayFull(dateStr, tradeId)) {
+    const limit = limitForDate(dateStr);
+    toast(`Dieser Tag ist bereits ausgebucht (${countFixedOnDate(dateStr, tradeId)}/${limit} feste Trades).`, false);
+    return;
+  }
+  t.date = dateStr;
+  save(); render();
+}
+
+function deleteTrade(personId, tradeId) {
+  const p = findPerson(personId);
+  if (!p) return;
+  p.trades = p.trades.filter(t => t.id !== tradeId);
+  save(); render();
+}
+
+function deletePerson(personId) {
+  const p = findPerson(personId);
+  if (!p) return;
+  if (!confirm(`Person "u/${p.reddit || p.ingame || '—'}" mit allen Trades wirklich löschen?`)) return;
+  state.people = state.people.filter(x => x.id !== personId);
+  save(); render();
+}
+
+/* ============================================================
+   HILFSFUNKTIONEN
+============================================================ */
+
+function esc(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+// Monats-Raster (Montag-first). Liefert Array aus {day, dateStr} oder null (Leerzelle).
+function monthCells(year, month) {
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // Mo=0 ... So=6
+  const days = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= days; d++) cells.push({ day: d, dateStr: `${year}-${pad2(month + 1)}-${pad2(d)}` });
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
+const DOW = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+/* ============================================================
+   RENDER – Master (rendert aktive Ansicht)
+============================================================ */
+
+const peopleEl = document.getElementById('people');
+
+function render() {
+  // Tab-Status
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === currentView));
+  document.getElementById('view-list').classList.toggle('hidden', currentView !== 'list');
+  document.getElementById('view-calendar').classList.toggle('hidden', currentView !== 'calendar');
+
+  renderList();
+  renderCalendar();
+}
+
+function switchView(v) { currentView = v; render(); }
+
+/* ---------- Ansicht 1: Personen-/Trade-Liste ---------- */
+
+function renderList() {
+  if (state.people.length === 0) {
+    peopleEl.innerHTML = `<div class="empty">Noch keine Personen angelegt.<br>Lege oben deine erste Trade-Vereinbarung an.</div>`;
+    return;
+  }
+  peopleEl.innerHTML = state.people.map(p => `
+    <section class="person" data-person="${p.id}">
+      <div class="person-head">
+        <div class="person-names">
+          <div class="person-name-item reddit">
+            <span class="lbl">Reddit</span>
+            <span class="val">${esc(p.reddit) || '—'}</span>
+          </div>
+          <div class="person-name-item">
+            <span class="lbl">Ingame</span>
+            <span class="val">${esc(p.ingame) || '—'}</span>
+          </div>
+        </div>
+        <div class="person-head-actions">
+          <button class="btn-ghost" data-action="del-person" data-person="${p.id}">Person löschen</button>
+        </div>
+      </div>
+
+      <div class="trades">
+        ${p.trades.map(t => renderTrade(p.id, t)).join('')}
+      </div>
+
+      <div class="add-trade-row">
+        <button class="btn-secondary" data-action="add-trade" data-person="${p.id}">+ Trade hinzufügen</button>
+      </div>
+    </section>
+  `).join('');
+}
+
+function renderTrade(personId, t) {
+  const scheduled = t.fixed && t.date;       // wirklich terminiert (zählt aufs Limit)
+  const dateLabel = t.date ? formatDate(t.date) : 'Datum wählen';
+  return `
+    <div class="trade ${scheduled ? 'fixed' : ''}" data-trade="${t.id}">
+      <div class="trade-main">
+        <label class="field">Abgeben
+          <input type="text" value="${esc(t.give)}" placeholder="Pokémon abgeben"
+                 data-action="give" data-person="${personId}" data-trade="${t.id}">
+        </label>
+        <div class="arrow">→</div>
+        <label class="field">Erhalten
+          <input type="text" value="${esc(t.receive)}" placeholder="Pokémon erhalten"
+                 data-action="receive" data-person="${personId}" data-trade="${t.id}">
+        </label>
+      </div>
+
+      <div class="trade-controls">
+        <label class="toggle">
+          <input type="checkbox" ${t.fixed ? 'checked' : ''}
+                 data-action="fixed" data-person="${personId}" data-trade="${t.id}">
+          Trade steht fest
+        </label>
+
+        <button class="date-btn ${t.date ? 'has-date' : ''}"
+                data-action="open-date" data-person="${personId}" data-trade="${t.id}">
+          📅 ${esc(dateLabel)}
+        </button>
+
+        ${scheduled ? `<span class="badge badge-fixed">✓ Fest</span>` : ''}
+        ${t.fixed && !t.date ? `<span class="badge badge-warn">⚠ Datum noch wählen</span>` : ''}
+        ${!t.fixed && t.date ? `<span class="badge badge-plan">📌 Geplant</span>` : ''}
+
+        <span class="spacer"></span>
+        <button class="btn-icon" data-action="del-trade" data-person="${personId}" data-trade="${t.id}">🗑 Löschen</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   2) MINI-KALENDER (Datums-Picker) als Overlay
+   - berechnet pro Tag die Belegung
+   - graut ausgebuchte Tage aus (nicht wählbar)
+   - markiert teilbelegte Tage mit Punkt
+============================================================ */
+
+const overlayEl = document.getElementById('overlay');
+const overlayCard = document.getElementById('overlay-card');
+
+let pickerPersonId = null, pickerTradeId = null, pickerYear, pickerMonth;
+
+function openDatePicker(personId, tradeId) {
+  const t = findTrade(personId, tradeId);
+  pickerPersonId = personId; pickerTradeId = tradeId;
+  const base = t && t.date ? parseDate(t.date) : new Date();
+  pickerYear = base.getFullYear();
+  pickerMonth = base.getMonth();
+  renderPicker();
+  overlayEl.classList.remove('hidden');
+}
+
+function pickerShiftMonth(delta) {
+  pickerMonth += delta;
+  if (pickerMonth < 0) { pickerMonth = 11; pickerYear--; }
+  else if (pickerMonth > 11) { pickerMonth = 0; pickerYear++; }
+  renderPicker();
+}
+
+function renderPicker() {
+  const t = findTrade(pickerPersonId, pickerTradeId);
+  const selDate = t ? t.date : '';
+  const today = todayStr();
+  const title = new Date(pickerYear, pickerMonth, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+  const cells = monthCells(pickerYear, pickerMonth);
+
+  const grid = cells.map(c => {
+    if (!c) return `<div class="day empty"></div>`;
+    const used = countFixedOnDate(c.dateStr, pickerTradeId);
+    const limit = limitForDate(c.dateStr);
+    const full = used >= limit;
+    const hasTrade = used > 0;
+    const selected = c.dateStr === selDate;
+    const cls = ['day'];
+    if (full) cls.push('full');
+    if (selected) cls.push('selected');
+    if (c.dateStr === today) cls.push('today');
+    const attr = full ? '' : `data-action="pick-day" data-date="${c.dateStr}"`;
+    const dot = (hasTrade && !selected && !full) ? `<span class="dot"></span>` : '';
+    const tip = full
+      ? `title="Ausgebucht – ${used}/${limit} feste Trades${isFriday(c.dateStr) ? ' (Freitag)' : ''}"`
+      : (hasTrade ? `title="${used}/${limit} belegt${isFriday(c.dateStr) ? ' (Freitag, 2 möglich)' : ''}"` : '');
+    return `<div class="${cls.join(' ')}" ${attr} ${tip}>${c.day}${dot}</div>`;
+  }).join('');
+
+  overlayCard.innerHTML = `
+    <div class="cal-head">
+      <button class="btn-ghost cal-navbtn" data-action="pick-prev" aria-label="Vorheriger Monat">‹</button>
+      <div class="cal-title">${esc(title)}</div>
+      <button class="btn-ghost cal-navbtn" data-action="pick-next" aria-label="Nächster Monat">›</button>
+    </div>
+    <div class="cal-grid">
+      ${DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}
+      ${grid}
+    </div>
+    <div class="cal-legend">
+      <span><span class="lg lg-free"></span>frei</span>
+      <span><span class="lg lg-dot"></span>teilweise belegt</span>
+      <span><span class="lg lg-full"></span>ausgebucht</span>
+    </div>
+    <div class="picker-foot">
+      ${selDate ? `<button class="btn-ghost" data-action="pick-clear">Datum entfernen</button>` : `<span></span>`}
+      <button class="btn-secondary" data-action="pick-close">Fertig</button>
+    </div>
+  `;
+}
+
+/* ============================================================
+   3) TERMINÜBERSICHT (Monatskalender)
+============================================================ */
+
+const calendarHost = document.getElementById('calendar-host');
+let calYear, calMonth;
+
+function renderCalendar() {
+  if (calYear === undefined) { const d = new Date(); calYear = d.getFullYear(); calMonth = d.getMonth(); }
+  const title = new Date(calYear, calMonth, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+  const today = todayStr();
+  const cells = monthCells(calYear, calMonth);
+
+  const grid = cells.map(c => {
+    if (!c) return `<div class="ov-cell other"></div>`;
+    const list = fixedTradesOnDate(c.dateStr);
+    const has = list.length > 0;
+    const cls = ['ov-cell'];
+    if (has) cls.push('has');
+    if (c.dateStr === today) cls.push('today');
+    const attr = has ? `data-action="cal-day" data-date="${c.dateStr}"` : '';
+    const items = list.map(x =>
+      `<div class="ov-trade">${esc(x.trade.give || '?')} ⇄ ${esc(x.trade.receive || '?')}</div>`
+    ).join('');
+    return `<div class="${cls.join(' ')}" ${attr}><div class="ov-day">${c.day}</div>${items}</div>`;
+  }).join('');
+
+  calendarHost.innerHTML = `
+    <div class="cal-head">
+      <button class="btn-ghost cal-navbtn" data-action="cal-prev">‹ Monat</button>
+      <div class="cal-title">${esc(title)}</div>
+      <button class="btn-ghost cal-navbtn" data-action="cal-next">Monat ›</button>
+    </div>
+    <div class="ov-dows">${DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}</div>
+    <div class="ov-grid">${grid}</div>
+    <div class="cal-hint">Grün markierte Tage haben feste Trades · Klick auf einen Tag zeigt die Details.
+      <br><button class="btn-ghost cal-navbtn" data-action="cal-today" style="margin-top:8px;">Heute</button></div>
+  `;
+}
+
+function calShiftMonth(delta) {
+  calMonth += delta;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  else if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+}
+
+function openDayDetail(dateStr) {
+  const list = fixedTradesOnDate(dateStr);
+  const limit = limitForDate(dateStr);
+  const trades = list.map(x => `
+    <div class="detail-trade">
+      <div class="detail-line">${esc(x.trade.give || '?')} ⇄ ${esc(x.trade.receive || '?')}</div>
+      <div class="detail-meta">
+        ${x.person.reddit ? 'u/' + esc(x.person.reddit) : '—'}
+        ${x.person.ingame ? ' · Ingame: ' + esc(x.person.ingame) : ''}
+      </div>
+    </div>
+  `).join('');
+
+  overlayCard.innerHTML = `
+    <div class="cal-head">
+      <div class="cal-title">${esc(formatDate(dateStr))}</div>
+      <button class="btn-ghost cal-navbtn" data-action="detail-close" aria-label="Schließen">✕</button>
+    </div>
+    <div class="detail-sub">${list.length} von ${limit} festen Trade(s)${isFriday(dateStr) ? ' · Freitag' : ''}</div>
+    ${trades || '<div class="detail-sub">Keine festen Trades an diesem Tag.</div>'}
+    <div class="detail-foot"><span></span><button class="btn-secondary" data-action="detail-close">Schließen</button></div>
+  `;
+  overlayEl.classList.remove('hidden');
+}
+
+function closeOverlay() { overlayEl.classList.add('hidden'); }
+
+/* ============================================================
+   EVENT-HANDLING
+============================================================ */
+
+// Tab-Wechsel
+document.querySelector('.tabs').addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (tab) switchView(tab.dataset.view);
+});
+
+// Personenliste: Klicks
+peopleEl.addEventListener('click', e => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const { action, person: personId, trade: tradeId } = btn.dataset;
+
+  if (action === 'add-trade') addTradeToPerson(personId);
+  else if (action === 'del-trade') deleteTrade(personId, tradeId);
+  else if (action === 'del-person') deletePerson(personId);
+  else if (action === 'open-date') openDatePicker(personId, tradeId);
+});
+
+// Personenliste: Texteingaben (give/receive) – live speichern ohne Re-Render (Fokus behalten)
+peopleEl.addEventListener('input', e => {
+  const el = e.target;
+  if (el.dataset.action === 'give' || el.dataset.action === 'receive') {
+    updateTradeText(el.dataset.person, el.dataset.trade, el.dataset.action, el.value);
+  }
+});
+
+// Personenliste: Checkbox "fest"
+peopleEl.addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.action === 'fixed') {
+    setTradeFixed(el.dataset.person, el.dataset.trade, el.checked);
+  }
+});
+
+// Overlay (Picker + Tagesdetails)
+overlayEl.addEventListener('click', e => {
+  if (e.target === overlayEl) { closeOverlay(); return; }     // Klick auf Hintergrund
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const a = el.dataset.action;
+
+  if (a === 'pick-prev') pickerShiftMonth(-1);
+  else if (a === 'pick-next') pickerShiftMonth(1);
+  else if (a === 'pick-close' || a === 'detail-close') closeOverlay();
+  else if (a === 'pick-clear') { setTradeDate(pickerPersonId, pickerTradeId, ''); closeOverlay(); }
+  else if (a === 'pick-day') { setTradeDate(pickerPersonId, pickerTradeId, el.dataset.date); closeOverlay(); }
+});
+
+// Monatsübersicht: Navigation + Tagesklick
+calendarHost.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const a = el.dataset.action;
+  if (a === 'cal-prev') calShiftMonth(-1);
+  else if (a === 'cal-next') calShiftMonth(1);
+  else if (a === 'cal-today') { const d = new Date(); calYear = d.getFullYear(); calMonth = d.getMonth(); renderCalendar(); }
+  else if (a === 'cal-day') openDayDetail(el.dataset.date);
+});
+
+// ESC schließt Overlay
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOverlay(); });
+
+// Neue Person anlegen
+document.getElementById('np-add').addEventListener('click', () => {
+  const reddit  = document.getElementById('np-reddit').value;
+  const ingame  = document.getElementById('np-ingame').value;
+  const give    = document.getElementById('np-give').value;
+  const receive = document.getElementById('np-receive').value;
+
+  if (!reddit.trim() && !ingame.trim()) {
+    toast('Bitte mindestens Reddit-Name oder Ingame-Name angeben.', false);
+    return;
+  }
+  addPerson(reddit, ingame, give, receive);
+  ['np-reddit','np-ingame','np-give','np-receive'].forEach(id => document.getElementById(id).value = '');
+  toast('Person angelegt.', true);
+});
+
+/* ============================================================
+   Toast
+============================================================ */
+let toastTimer = null;
+function toast(msg, ok) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.toggle('ok', !!ok);
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+/* ============================================================
+   Start
+============================================================ */
+load();
+render();
+</script>
+</body>
+</html>
