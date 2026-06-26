@@ -1090,7 +1090,7 @@ render();
   const CONFIGURED = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("DEIN");
   const log = (m) => { try { window.syncLog && window.syncLog(m); } catch (e) {} };
 
-  log("Diagnose-Build v5. Projekt: " + (firebaseConfig.projectId || "?") + " · online: " + navigator.onLine);
+  log("Build v6 (ohne Login). Projekt: " + (firebaseConfig.projectId || "?") + " · online: " + navigator.onLine);
 
   if (!CONFIGURED) {
     window.setSyncStatus && window.setSyncStatus("off", "💾 Nur auf diesem Gerät (Cloud-Sync noch nicht eingerichtet)");
@@ -1101,14 +1101,13 @@ render();
 
     Promise.all([
       import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js"),
-      import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js"),
-      import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js")
-    ]).then(async ([appMod, fs, authMod]) => {
+      import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js")
+    ]).then(async ([appMod, fs]) => {
       log("SDK geladen. Initialisiere …");
-      const app  = appMod.initializeApp(firebaseConfig);
-      const db   = fs.getFirestore(app);
-      const auth = authMod.getAuth(app);
-      const ref  = fs.doc(db, "tradeliste", "shared");
+      const app = appMod.initializeApp(firebaseConfig);
+      const db  = fs.getFirestore(app);
+      const ref = fs.doc(db, "tradeliste", "shared");
+      log("Bereit – ohne Login (offene Regeln).");
 
       let lastPushed = null;   // zuletzt selbst hochgeladener Stand (Echo-Erkennung)
       let lastSeen   = null;   // zuletzt aus der Cloud gelesener Stand
@@ -1123,15 +1122,7 @@ render();
           .catch((e) => { window.setSyncStatus("error", "⚠️ Fehler beim Speichern"); log("Schreiben FEHLER: " + (e && (e.code || e.message))); });
       };
 
-      // Anonyme Anmeldung (muss in der Firebase-Konsole aktiviert sein)
-      try {
-        await authMod.signInAnonymously(auth);
-        log("Anmeldung OK (anonym).");
-      } catch (e) {
-        window.setSyncStatus("error", "⚠️ Anonyme Anmeldung fehlgeschlagen");
-        log("Anmeldung FEHLER: " + (e && (e.code || e.message)));
-        return;
-      }
+      // Kein Login mehr – Auth blockierte in der iOS-WebView. Zugriff über offene Regeln.
 
       // Aktuellen Cloud-Stand abrufen und ggf. übernehmen
       async function pullOnce() {
