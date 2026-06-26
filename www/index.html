@@ -1076,19 +1076,21 @@ render();
       import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js")
     ]).then(async ([appMod, fs, authMod]) => {
       const app  = appMod.initializeApp(firebaseConfig);
-      // Auto-Erkennung von Long-Polling: verbindet sich normal (klappt in der iOS-WebView)
-      // und schaltet automatisch auf Long-Polling um, wenn die Streaming-Verbindung
-      // (z. B. hinter VPN/Proxy) blockiert ist. Force-Long-Polling ließ die iOS-WebView hängen.
-      const db   = fs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+      // Einfache Verbindung (ohne erzwungenes Long-Polling) – in der iOS-WebView am
+      // zuverlässigsten. Statt eines dauerhaften Streams (der hinter VPN/in der WebView
+      // hängt) fragen wir den Stand regelmäßig per getDoc ab = simple HTTPS-Anfragen.
+      const db   = fs.getFirestore(app);
       const auth = authMod.getAuth(app);
       const ref  = fs.doc(db, "tradeliste", "shared");
 
-      let lastPushed = null;
+      let lastPushed = null;   // zuletzt selbst hochgeladener Stand (Echo-Erkennung)
+      let lastSeen   = null;   // zuletzt aus der Cloud gelesener Stand
 
-      // Push-Funktion fürs Hauptskript
+      // Push-Funktion fürs Hauptskript (Schreiben = einfache HTTPS-Anfrage, läuft überall)
       window.cloudPush = function (state) {
         const json = JSON.stringify({ people: state.people });
         lastPushed = json;
+        lastSeen   = json;
         fs.setDoc(ref, { json, updatedAt: Date.now() })
           .then(() => window.setSyncStatus("online", "☁️ Synchronisiert"))
           .catch(() => window.setSyncStatus("error", "⚠️ Fehler beim Speichern in der Cloud"));
@@ -1102,30 +1104,41 @@ render();
         return;
       }
 
-      // Echtzeit-Listener: Änderungen anderer Geräte sofort übernehmen
-      fs.onSnapshot(ref, (snap) => {
+      // Aktuellen Cloud-Stand abrufen und ggf. übernehmen
+      async function pullOnce() {
+        let snap;
+        try {
+          snap = await fs.getDoc(ref);
+        } catch (e) {
+          window.setSyncStatus("offline", "⚠️ Offline – Änderungen lokal gespeichert");
+          return;
+        }
         window.setSyncStatus("online", "☁️ Synchronisiert");
         const local = window.__getState();
         const localHasData = local.people && local.people.length > 0;
-
         const data = snap.exists() ? snap.data() : null;
+
         if (!data || typeof data.json !== "string") {
-          // Remote noch leer -> mit lokalem Stand befüllen (nur wenn lokal Daten da sind)
-          if (localHasData) window.cloudPush(local);
+          if (localHasData) window.cloudPush(local);   // Cloud leer -> mit lokalem Stand befüllen
           return;
         }
-        if (data.json === lastPushed) return; // unser eigener Schreibvorgang -> ignorieren
+        if (data.json === lastPushed || data.json === lastSeen) return; // nichts Neues / eigener Schreibvorgang
 
         let remote;
         try { remote = JSON.parse(data.json); } catch (e) { return; }
         const remoteHasData = remote.people && remote.people.length > 0;
+        if (!remoteHasData && localHasData) { window.cloudPush(local); return; } // leeren Stand nicht übernehmen
 
-        // Sicherheitsnetz: leeren Remote-Stand NICHT über vorhandene lokale Daten schreiben
-        if (!remoteHasData && localHasData) { window.cloudPush(local); return; }
-
+        lastSeen = data.json;
         window.applyRemoteState(remote);
-      }, () => {
-        window.setSyncStatus("offline", "⚠️ Offline – Änderungen lokal gespeichert");
+      }
+
+      // Sofort abrufen, danach alle 4 s (nur wenn die App im Vordergrund ist),
+      // sowie sofort beim Zurückkehren in die App.
+      pullOnce();
+      setInterval(() => { if (document.visibilityState === "visible") pullOnce(); }, 4000);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") pullOnce();
       });
     }).catch(() => {
       window.setSyncStatus("offline", "⚠️ Cloud nicht erreichbar – Änderungen lokal gespeichert");
