@@ -70,7 +70,18 @@
     background: #f8fafc; border: 2px solid #0f172a;
   }
   h1 { font-size: 1.45rem; margin: 0; }
-  .subtitle { color: var(--text-muted); font-size: .9rem; margin: 0 0 16px; }
+  .subtitle { color: var(--text-muted); font-size: .9rem; margin: 0 0 10px; }
+
+  /* Sync-Status-Anzeige */
+  .sync-status {
+    display: inline-block; font-size: .76rem; font-weight: 600;
+    padding: 4px 11px; border-radius: 999px; margin: 0 0 16px;
+    border: 1px solid var(--border); color: var(--text-muted); background: var(--bg-card);
+  }
+  .sync-status[data-kind="online"]     { color: var(--green);  border-color: var(--green-border); }
+  .sync-status[data-kind="connecting"] { color: var(--yellow); border-color: #6b5618; }
+  .sync-status[data-kind="offline"],
+  .sync-status[data-kind="error"]      { color: var(--danger); border-color: #6b2a2a; }
 
   /* ============================================================
      Tab-Navigation (Liste / Terminübersicht)
@@ -346,6 +357,7 @@
     <h1>Pokémon-Go-Tradeliste</h1>
   </header>
   <p class="subtitle">Persönliche Verwaltung deiner Trade-Vereinbarungen.</p>
+  <div id="sync-status" class="sync-status" data-kind="connecting">⏳ Lädt…</div>
 
   <!-- Tab-Navigation -->
   <nav class="tabs">
@@ -439,7 +451,53 @@ function load() {
 
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Bei lokaler Änderung zusätzlich in die Cloud schreiben (sofern eingerichtet)
+  if (!applyingRemote && typeof window.cloudPush === 'function') cloudPushDebounced();
 }
+
+/* ============================================================
+   CLOUD-SYNC (Firebase) – Brücke zum Hauptskript
+   Offline-first: localStorage bleibt für die Anzeige führend;
+   die Cloud spiegelt den Stand zwischen den Geräten.
+============================================================ */
+let applyingRemote = false;   // true, während ein Remote-Stand übernommen wird (verhindert Echo-Schleifen)
+let pendingRemote = null;     // gepufferter Remote-Stand, falls der Nutzer gerade tippt
+let _pushTimer = null;
+
+function cloudPushDebounced() {
+  clearTimeout(_pushTimer);
+  _pushTimer = setTimeout(() => { try { window.cloudPush(state); } catch (e) {} }, 400);
+}
+
+// Tippt der Nutzer gerade in ein Pokémon-Feld? Dann Remote-Update kurz aufschieben.
+function isEditingText() {
+  const a = document.activeElement;
+  return !!(a && a.tagName === 'INPUT' && (a.dataset.action === 'give' || a.dataset.action === 'receive'));
+}
+
+// Wird vom Firebase-Modul aufgerufen, wenn von einem anderen Gerät ein neuer Stand kommt
+window.applyRemoteState = function (remote) {
+  if (!remote || !Array.isArray(remote.people)) return;
+  const incoming = JSON.stringify({ people: remote.people });
+  if (incoming === JSON.stringify({ people: state.people })) return; // identisch -> nichts tun
+  if (isEditingText()) { pendingRemote = remote; return; }            // nicht beim Tippen stören
+  applyingRemote = true;
+  state = { people: remote.people };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  applyingRemote = false;
+  render();
+};
+
+// Aktuellen lokalen Stand bereitstellen (z. B. zum Erst-Befüllen der Cloud)
+window.__getState = function () { return state; };
+
+// Sync-Status-Pille aktualisieren
+window.setSyncStatus = function (kind, text) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  el.dataset.kind = kind;
+  el.textContent = text;
+};
 
 /* ============================================================
    VALIDIERUNGSLOGIK – Tageslimit-Regel (UNVERÄNDERT)
@@ -910,6 +968,16 @@ peopleEl.addEventListener('change', e => {
   }
 });
 
+// Gepufferten Remote-Stand übernehmen, sobald der Nutzer das Eingabefeld verlässt
+peopleEl.addEventListener('focusout', () => {
+  setTimeout(() => {
+    if (pendingRemote && !isEditingText()) {
+      const r = pendingRemote; pendingRemote = null;
+      window.applyRemoteState(r);
+    }
+  }, 150);
+});
+
 // Overlay (Picker + Tagesdetails)
 overlayEl.addEventListener('click', e => {
   if (e.target === overlayEl) { closeOverlay(); return; }     // Klick auf Hintergrund
@@ -972,6 +1040,94 @@ function toast(msg, ok) {
 ============================================================ */
 load();
 render();
+</script>
+
+<!-- ============================================================
+     CLOUD-SYNC (Firebase) – als ES-Modul, läuft unabhängig vom
+     Hauptskript. Ohne gültige Konfiguration bleibt die App rein
+     lokal (offline-first) und funktioniert ganz normal weiter.
+============================================================ -->
+<script type="module">
+  /* ====== 1) HIER DEINE FIREBASE-WEB-KONFIGURATION EINTRAGEN ======
+     Aus der Firebase-Konsole: Projekt -> ⚙ Projekteinstellungen ->
+     "Meine Apps" -> Web-App -> SDK-Konfiguration -> "Config".
+     Diese Werte sind KEINE Geheimnisse und dürfen öffentlich sein. */
+  const firebaseConfig = {
+    apiKey: "AIzaSyC4L9Kg7xL3yThAGGzviFLmTHEKeuTbXd8",
+    authDomain: "pogo-tradeliste.firebaseapp.com",
+    projectId: "pogo-tradeliste",
+    storageBucket: "pogo-tradeliste.firebasestorage.app",
+    messagingSenderId: "607435892511",
+    appId: "1:607435892511:web:e32ddad4e3b6d64250b22a",
+    measurementId: "G-2Y8TV9VMJ7"
+  };
+  /* =============================================================== */
+
+  const CONFIGURED = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("DEIN");
+
+  if (!CONFIGURED) {
+    window.setSyncStatus && window.setSyncStatus("off", "💾 Nur auf diesem Gerät (Cloud-Sync noch nicht eingerichtet)");
+  } else {
+    window.setSyncStatus && window.setSyncStatus("connecting", "⏳ Verbinde mit Cloud…");
+
+    Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js")
+    ]).then(async ([appMod, fs, authMod]) => {
+      const app  = appMod.initializeApp(firebaseConfig);
+      const db   = fs.getFirestore(app);
+      const auth = authMod.getAuth(app);
+      const ref  = fs.doc(db, "tradeliste", "shared");
+
+      let lastPushed = null;
+
+      // Push-Funktion fürs Hauptskript
+      window.cloudPush = function (state) {
+        const json = JSON.stringify({ people: state.people });
+        lastPushed = json;
+        fs.setDoc(ref, { json, updatedAt: Date.now() })
+          .then(() => window.setSyncStatus("online", "☁️ Synchronisiert"))
+          .catch(() => window.setSyncStatus("error", "⚠️ Fehler beim Speichern in der Cloud"));
+      };
+
+      // Anonyme Anmeldung (muss in der Firebase-Konsole aktiviert sein)
+      try {
+        await authMod.signInAnonymously(auth);
+      } catch (e) {
+        window.setSyncStatus("error", "⚠️ Anonyme Anmeldung fehlgeschlagen – in Firebase aktivieren");
+        return;
+      }
+
+      // Echtzeit-Listener: Änderungen anderer Geräte sofort übernehmen
+      fs.onSnapshot(ref, (snap) => {
+        window.setSyncStatus("online", "☁️ Synchronisiert");
+        const local = window.__getState();
+        const localHasData = local.people && local.people.length > 0;
+
+        const data = snap.exists() ? snap.data() : null;
+        if (!data || typeof data.json !== "string") {
+          // Remote noch leer -> mit lokalem Stand befüllen (nur wenn lokal Daten da sind)
+          if (localHasData) window.cloudPush(local);
+          return;
+        }
+        if (data.json === lastPushed) return; // unser eigener Schreibvorgang -> ignorieren
+
+        let remote;
+        try { remote = JSON.parse(data.json); } catch (e) { return; }
+        const remoteHasData = remote.people && remote.people.length > 0;
+
+        // Sicherheitsnetz: leeren Remote-Stand NICHT über vorhandene lokale Daten schreiben
+        if (!remoteHasData && localHasData) { window.cloudPush(local); return; }
+
+        window.applyRemoteState(remote);
+      }, () => {
+        window.setSyncStatus("offline", "⚠️ Offline – Änderungen lokal gespeichert");
+      });
+    }).catch(() => {
+      window.setSyncStatus("offline", "⚠️ Cloud nicht erreichbar – Änderungen lokal gespeichert");
+    });
+  }
 </script>
 </body>
 </html>
