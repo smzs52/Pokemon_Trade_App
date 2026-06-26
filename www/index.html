@@ -1076,7 +1076,9 @@ render();
       import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js")
     ]).then(async ([appMod, fs, authMod]) => {
       const app  = appMod.initializeApp(firebaseConfig);
-      const db   = fs.getFirestore(app);
+      // Long-Polling erzwingen: zuverlässig hinter VPN/Proxy und in der iOS-WebView,
+      // wo die normale Streaming-Verbindung (WebChannel) für Echtzeit-Updates blockiert sein kann.
+      const db   = fs.initializeFirestore(app, { experimentalForceLongPolling: true });
       const auth = authMod.getAuth(app);
       const ref  = fs.doc(db, "tradeliste", "shared");
 
