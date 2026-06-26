@@ -83,6 +83,16 @@
   .sync-status[data-kind="offline"],
   .sync-status[data-kind="error"]      { color: var(--danger); border-color: #6b2a2a; }
 
+  /* Sync-Diagnose */
+  .sync-diag { margin: 0 0 16px; font-size: .72rem; }
+  .sync-diag summary { color: var(--text-muted); cursor: pointer; user-select: none; }
+  #sync-log {
+    white-space: pre-wrap; word-break: break-word; margin: 8px 0;
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px; max-height: 240px; overflow: auto; color: var(--text);
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .7rem; line-height: 1.45;
+  }
+
   /* ============================================================
      Tab-Navigation (Liste / Terminübersicht)
   ============================================================ */
@@ -358,6 +368,11 @@
   </header>
   <p class="subtitle">Persönliche Verwaltung deiner Trade-Vereinbarungen.</p>
   <div id="sync-status" class="sync-status" data-kind="connecting">⏳ Lädt…</div>
+  <details id="sync-diag" class="sync-diag" open>
+    <summary>🔧 Sync-Diagnose</summary>
+    <pre id="sync-log">—</pre>
+    <button id="sync-recheck" class="btn-ghost" type="button">🔄 Jetzt prüfen</button>
+  </details>
 
   <!-- Tab-Navigation -->
   <nav class="tabs">
@@ -497,6 +512,15 @@ window.setSyncStatus = function (kind, text) {
   if (!el) return;
   el.dataset.kind = kind;
   el.textContent = text;
+};
+
+// Sync-Diagnose-Protokoll (sichtbar auf dem Gerät, zum Auslesen bei Problemen)
+window.syncLog = function (msg) {
+  const el = document.getElementById('sync-log');
+  if (!el) return;
+  const t = new Date().toLocaleTimeString('de-DE');
+  el.textContent = (el.textContent === '—' ? '' : el.textContent + '\n') + '[' + t + '] ' + msg;
+  el.scrollTop = el.scrollHeight;
 };
 
 /* ============================================================
@@ -1064,21 +1088,24 @@ render();
   /* =============================================================== */
 
   const CONFIGURED = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("DEIN");
+  const log = (m) => { try { window.syncLog && window.syncLog(m); } catch (e) {} };
+
+  log("Diagnose-Build v5. Projekt: " + (firebaseConfig.projectId || "?") + " · online: " + navigator.onLine);
 
   if (!CONFIGURED) {
     window.setSyncStatus && window.setSyncStatus("off", "💾 Nur auf diesem Gerät (Cloud-Sync noch nicht eingerichtet)");
+    log("FEHLER: keine Firebase-Config gefunden -> nur lokal.");
   } else {
     window.setSyncStatus && window.setSyncStatus("connecting", "⏳ Verbinde mit Cloud…");
+    log("Lade Firebase-SDK von gstatic.com …");
 
     Promise.all([
       import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js"),
       import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js"),
       import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js")
     ]).then(async ([appMod, fs, authMod]) => {
+      log("SDK geladen. Initialisiere …");
       const app  = appMod.initializeApp(firebaseConfig);
-      // Einfache Verbindung (ohne erzwungenes Long-Polling) – in der iOS-WebView am
-      // zuverlässigsten. Statt eines dauerhaften Streams (der hinter VPN/in der WebView
-      // hängt) fragen wir den Stand regelmäßig per getDoc ab = simple HTTPS-Anfragen.
       const db   = fs.getFirestore(app);
       const auth = authMod.getAuth(app);
       const ref  = fs.doc(db, "tradeliste", "shared");
@@ -1086,21 +1113,23 @@ render();
       let lastPushed = null;   // zuletzt selbst hochgeladener Stand (Echo-Erkennung)
       let lastSeen   = null;   // zuletzt aus der Cloud gelesener Stand
 
-      // Push-Funktion fürs Hauptskript (Schreiben = einfache HTTPS-Anfrage, läuft überall)
+      // Push-Funktion fürs Hauptskript (Schreiben = einfache HTTPS-Anfrage)
       window.cloudPush = function (state) {
         const json = JSON.stringify({ people: state.people });
-        lastPushed = json;
-        lastSeen   = json;
+        lastPushed = json; lastSeen = json;
+        log("Schreibe " + (state.people ? state.people.length : 0) + " Person(en) …");
         fs.setDoc(ref, { json, updatedAt: Date.now() })
-          .then(() => window.setSyncStatus("online", "☁️ Synchronisiert"))
-          .catch(() => window.setSyncStatus("error", "⚠️ Fehler beim Speichern in der Cloud"));
+          .then(() => { window.setSyncStatus("online", "☁️ Synchronisiert"); log("Schreiben OK."); })
+          .catch((e) => { window.setSyncStatus("error", "⚠️ Fehler beim Speichern"); log("Schreiben FEHLER: " + (e && (e.code || e.message))); });
       };
 
       // Anonyme Anmeldung (muss in der Firebase-Konsole aktiviert sein)
       try {
         await authMod.signInAnonymously(auth);
+        log("Anmeldung OK (anonym).");
       } catch (e) {
-        window.setSyncStatus("error", "⚠️ Anonyme Anmeldung fehlgeschlagen – in Firebase aktivieren");
+        window.setSyncStatus("error", "⚠️ Anonyme Anmeldung fehlgeschlagen");
+        log("Anmeldung FEHLER: " + (e && (e.code || e.message)));
         return;
       }
 
@@ -1110,7 +1139,8 @@ render();
         try {
           snap = await fs.getDoc(ref);
         } catch (e) {
-          window.setSyncStatus("offline", "⚠️ Offline – Änderungen lokal gespeichert");
+          window.setSyncStatus("offline", "⚠️ Offline – lokal gespeichert");
+          log("Abruf FEHLER: " + (e && (e.code || e.message)));
           return;
         }
         window.setSyncStatus("online", "☁️ Synchronisiert");
@@ -1119,29 +1149,32 @@ render();
         const data = snap.exists() ? snap.data() : null;
 
         if (!data || typeof data.json !== "string") {
-          if (localHasData) window.cloudPush(local);   // Cloud leer -> mit lokalem Stand befüllen
+          log("Abruf OK: Cloud leer." + (localHasData ? " Lade lokalen Stand hoch." : ""));
+          if (localHasData) window.cloudPush(local);
           return;
         }
-        if (data.json === lastPushed || data.json === lastSeen) return; // nichts Neues / eigener Schreibvorgang
+        if (data.json === lastPushed || data.json === lastSeen) { log("Abruf OK: nichts Neues."); return; }
 
         let remote;
-        try { remote = JSON.parse(data.json); } catch (e) { return; }
+        try { remote = JSON.parse(data.json); } catch (e) { log("Abruf: ungültige Daten."); return; }
         const remoteHasData = remote.people && remote.people.length > 0;
-        if (!remoteHasData && localHasData) { window.cloudPush(local); return; } // leeren Stand nicht übernehmen
+        if (!remoteHasData && localHasData) { log("Abruf: Cloud leer, lokal nicht -> hochladen."); window.cloudPush(local); return; }
 
         lastSeen = data.json;
+        log("Abruf OK: NEUER Stand (" + (remote.people ? remote.people.length : 0) + " Person(en)) übernommen.");
         window.applyRemoteState(remote);
       }
 
-      // Sofort abrufen, danach alle 4 s (nur wenn die App im Vordergrund ist),
-      // sowie sofort beim Zurückkehren in die App.
+      log("Erster Abruf …");
       pullOnce();
       setInterval(() => { if (document.visibilityState === "visible") pullOnce(); }, 4000);
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible") pullOnce();
-      });
-    }).catch(() => {
-      window.setSyncStatus("offline", "⚠️ Cloud nicht erreichbar – Änderungen lokal gespeichert");
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pullOnce(); });
+
+      const rc = document.getElementById("sync-recheck");
+      if (rc) rc.addEventListener("click", () => { log("Manueller Abruf …"); pullOnce(); });
+    }).catch((e) => {
+      window.setSyncStatus("offline", "⚠️ Cloud nicht erreichbar – lokal gespeichert");
+      log("SDK-LADEFEHLER: " + (e && (e.message || e)));
     });
   }
 </script>
